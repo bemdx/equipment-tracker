@@ -46,9 +46,8 @@ with st.expander("Extras Menu"):
     if st.button("View Logs", use_container_width=True):
         st.session_state.current_page = "View Logs"
 
-    # --- ADDED: Button to access the new Extras / Cleanup page ---
-    if st.button("System Tools & Cleanup", use_container_width=True):
-        st.session_state.current_page = "Extras"
+    if st.button("Delete All Empty Jobs", use_container_width=True):
+        st.session_state.current_page = "Delete Empty Jobs"
 
 st.divider()
 
@@ -79,7 +78,6 @@ elif st.session_state.current_page == "Move Equipment":
                         cur.execute("INSERT INTO locations (name) VALUES (%s);", (new_job_name.strip(),))
                         conn.commit()
                         st.success(f"Job site '{new_job_name.strip()}' created! You can now select it below.")
-                        # Rerun to instantly update the dropdown menu below
                         st.rerun() 
                     except Exception as e:
                         conn.rollback()
@@ -101,7 +99,6 @@ elif st.session_state.current_page == "Move Equipment":
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
-            # Step A: Fetch only Categories that actually have equipment in the system
             cur.execute("""
                 SELECT DISTINCT et.id, et.name 
                 FROM equipment_types et 
@@ -115,7 +112,6 @@ elif st.session_state.current_page == "Move Equipment":
                 selected_type_name = st.selectbox("1. Select Equipment Type", list(type_options.keys()))
                 selected_type_id = type_options[selected_type_name]
                 
-                # Step B: Fetch only the Units for the selected Category
                 cur.execute("""
                     SELECT e.id, e.unit_number, l.name 
                     FROM equipment e 
@@ -125,7 +121,6 @@ elif st.session_state.current_page == "Move Equipment":
                 """, (selected_type_id,))
                 items = cur.fetchall()
                 
-                # Filter out items that the user has already added to their staging list
                 available_items = [i for i in items if i[0] not in st.session_state.move_cart]
                 
                 if available_items:
@@ -137,7 +132,6 @@ elif st.session_state.current_page == "Move Equipment":
                         
                     selected_item_label = st.selectbox("2. Select Specific Item", list(item_options.keys()))
                     
-                    # Add to list button
                     if st.button("➕ Add to List"):
                         item_id = item_options[selected_item_label]
                         full_label = f"{selected_type_name} — {selected_item_label}"
@@ -146,7 +140,6 @@ elif st.session_state.current_page == "Move Equipment":
                 else:
                     st.info(f"All available {selected_type_name}s are already on your move list.")
 
-            # --- 4. STAGING LIST & CONFIRMATION ---
             if st.session_state.move_cart:
                 st.divider()
                 st.write("### 📋 Items Ready to Move:")
@@ -154,7 +147,7 @@ elif st.session_state.current_page == "Move Equipment":
                 for idx, (i_id, label) in enumerate(st.session_state.move_cart.items()):
                     st.write(f"- {label}")
                     
-                st.write("") # Quick spacer
+                st.write("") 
                 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -170,10 +163,8 @@ elif st.session_state.current_page == "Move Equipment":
                                 t_name, u_num = cur.fetchone()
                                 item_desc = f"{t_name} ({u_num})" if u_num != "N/A" else t_name
                                 
-                                # Update Database Location
                                 cur.execute("UPDATE equipment SET location_id = %s WHERE id = %s", (target_location_id, item_id))
                                 
-                                # Log the movement
                                 cur.execute("""
                                     INSERT INTO movement_logs (action_type, item_description, target_location) 
                                     VALUES (%s, %s, %s)
@@ -203,7 +194,6 @@ elif st.session_state.current_page == "Total Scrap-Out":
     if conn:
         cur = conn.cursor()
         
-        # Fetch only locations that aren't the Shop (ID 1) AND currently have equipment
         cur.execute("""
             SELECT DISTINCT l.id, l.name 
             FROM locations l
@@ -222,7 +212,6 @@ elif st.session_state.current_page == "Total Scrap-Out":
             
             if st.button("Confirm Total Scrap-Out"):
                 try:
-                    # Fetch all items at this location for logging purposes before moving them
                     cur.execute("""
                         SELECT e.id, et.name, e.unit_number 
                         FROM equipment e 
@@ -231,10 +220,8 @@ elif st.session_state.current_page == "Total Scrap-Out":
                     """, (selected_job_id,))
                     items_to_move = cur.fetchall()
                     
-                    # Update all equipment at this job site to the Shop (Location ID 1)
                     cur.execute("UPDATE equipment SET location_id = 1 WHERE location_id = %s", (selected_job_id,))
                     
-                    # Log the movement for each individual item
                     for item in items_to_move:
                         item_id, t_name, u_num = item
                         item_desc = f"{t_name} ({u_num})" if u_num != "N/A" else t_name
@@ -265,7 +252,6 @@ elif st.session_state.current_page == "View Locations":
     if conn:
         cur = conn.cursor()
         
-        # Fetch all locations
         cur.execute("SELECT id, name FROM locations ORDER BY (id = 1) DESC, name ASC;")
         locations = cur.fetchall()
         
@@ -276,7 +262,6 @@ elif st.session_state.current_page == "View Locations":
             
             st.divider()
             
-            # Fetch equipment at the selected location
             cur.execute("""
                 SELECT et.name, e.unit_number, et.has_number
                 FROM equipment e
@@ -290,7 +275,6 @@ elif st.session_state.current_page == "View Locations":
             if inventory:
                 st.write(f"### Inventory at: {selected_loc_name}")
                 
-                # Group the inventory for a clean display
                 display_data = {}
                 for item in inventory:
                     type_name = item[0]
@@ -304,17 +288,15 @@ elif st.session_state.current_page == "View Locations":
                     if has_number and unit_num != "N/A":
                         display_data[type_name]["items"].append(unit_num)
                         
-                # Print the grouped data to the screen
                 for type_name, data in display_data.items():
                     if data["has_number"]:
-                        # Sort numbers for clean reading
                         items_list = ", ".join(sorted(data["items"]))
                         st.write(f"**{type_name}** (Total Count: {data['count']})")
                         st.write(f"Assigned Units: {items_list}")
                     else:
                         st.write(f"**{type_name}** (Quantity: {data['count']})")
                     
-                    st.write("---") # Adds a subtle line between equipment categories
+                    st.write("---") 
             else:
                 st.info(f"No equipment currently located at {selected_loc_name}.")
         else:
@@ -334,7 +316,6 @@ elif st.session_state.current_page == "Add Equipment":
     if conn:
         cur = conn.cursor()
         
-        # --- Form 1: Create Equipment Type ---
         st.write("Step 1: Define Equipment Category (if it doesn't exist yet)")
         with st.form("new_type_form", clear_on_submit=True):
             type_name = st.text_input("Category Name (e.g., Grinder, Extension Cord)")
@@ -352,7 +333,6 @@ elif st.session_state.current_page == "Add Equipment":
 
         st.divider()
 
-        # --- Form 2: Add Actual Equipment ---
         st.write("Step 2: Add Item to Inventory")
         
         cur.execute("SELECT id, name, has_number FROM equipment_types")
@@ -570,25 +550,24 @@ elif st.session_state.current_page == "Find Equipment":
         cur.close()
         conn.close()
 #############################
-elif st.session_state.current_page == "Extras":
-    st.subheader("Extras & System Tools")
-    st.write("Manage background data and clean up the database.")
+elif st.session_state.current_page == "Delete Empty Jobs":
+    st.subheader("Delete All Empty Jobs")
+    st.write("Permanently remove all job sites that currently have 0 equipment assigned.")
     
     st.divider()
-    st.subheader("Cleanup Tools")
     
     if "confirm_delete_empty" not in st.session_state:
         st.session_state.confirm_delete_empty = False
 
-    if st.button("🗑️ Delete All Empty Jobs"):
+    if st.button("Delete All Empty Jobs"):
         st.session_state.confirm_delete_empty = True
 
     if st.session_state.confirm_delete_empty:
-        st.warning("Are you sure? This will permanently delete all job sites that currently have 0 equipment assigned to them (The Shop will not be touched).")
+        st.warning("Are you sure? This will permanently delete all job sites with 0 equipment assigned (The Shop will not be touched).")
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✔️ Yes, Delete Empty Jobs", use_container_width=True):
+            if st.button("Yes, Delete Empty Jobs", use_container_width=True):
                 conn = connect_db()
                 if conn:
                     cur = conn.cursor()
@@ -610,7 +589,7 @@ elif st.session_state.current_page == "Extras":
                         cur.close()
                         conn.close()
         with col2:
-            if st.button("❌ Cancel", use_container_width=True):
+            if st.button("Cancel", use_container_width=True):
                 st.session_state.confirm_delete_empty = False
                 st.rerun()
 
