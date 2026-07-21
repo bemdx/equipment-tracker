@@ -5,21 +5,6 @@ NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning
 # Page Configuration
 st.set_page_config(page_title="Equipment Tracker", layout="centered")
 
-##### Deletion of Unused Jobs ######
-def cleanup_empty_jobs(conn):
-    """Deletes locations that have 0 equipment assigned, EXCLUDING the Shop (ID 1)."""
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            DELETE FROM locations 
-            WHERE id != 1 
-            AND id NOT IN (SELECT DISTINCT location_id FROM equipment);
-        """)
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-    finally:
-        cur.close()
 #######################
 def connect_db():
     """Establish connection to the Neon PostgreSQL database."""
@@ -60,6 +45,10 @@ with st.expander("Extras Menu"):
         
     if st.button("View Logs", use_container_width=True):
         st.session_state.current_page = "View Logs"
+
+    # --- ADDED: Button to access the new Extras / Cleanup page ---
+    if st.button("System Tools & Cleanup", use_container_width=True):
+        st.session_state.current_page = "Extras"
 
 st.divider()
 
@@ -349,7 +338,6 @@ elif st.session_state.current_page == "Add Equipment":
         st.write("Step 1: Define Equipment Category (if it doesn't exist yet)")
         with st.form("new_type_form", clear_on_submit=True):
             type_name = st.text_input("Category Name (e.g., Grinder, Extension Cord)")
-            # Added clarification for bulk items
             has_number = st.checkbox("Does this item use unit numbers? (Uncheck for bulk items)", value=True)
             submit_type = st.form_submit_button("Create Category")
             
@@ -373,7 +361,6 @@ elif st.session_state.current_page == "Add Equipment":
         if types:
             type_options = {t[1]: t for t in types}
             
-            # We place the selectbox OUTSIDE the form so the UI updates instantly
             selected_type_name = st.selectbox("Select Category", list(type_options.keys()))
             selected_type = type_options[selected_type_name]
             
@@ -381,7 +368,6 @@ elif st.session_state.current_page == "Add Equipment":
             category_has_number = selected_type[2]
             
             with st.form("new_equipment_form", clear_on_submit=True):
-                # Dynamically show different inputs based on category settings
                 if category_has_number:
                     unit_number = st.text_input("Unit Number (Required)")
                     quantity = 1
@@ -392,11 +378,9 @@ elif st.session_state.current_page == "Add Equipment":
                 submit_eq = st.form_submit_button("Add to Shop")
                 
                 if submit_eq:
-                    # 1. Validation check for missing numbers
                     if category_has_number and not unit_number.strip():
                         st.error("A unit number is required for this category.")
                     else:
-                        # 2. Check for duplicate unit numbers in the database
                         duplicate_found = False
                         if category_has_number:
                             cur.execute("SELECT id FROM equipment WHERE unit_number = %s", (unit_number.strip(),))
@@ -404,18 +388,16 @@ elif st.session_state.current_page == "Add Equipment":
                                 duplicate_found = True
                                 st.error(f"Error: Unit number '{unit_number}' already exists in the system.")
                         
-                        # 3. Insert into database if everything is clean
                         if not duplicate_found:
                             try:
-                                # This loops if a quantity > 1 was selected for bulk items
                                 for _ in range(quantity):
                                     cur.execute("""
                                         INSERT INTO equipment (type_id, unit_number, location_id) 
                                         VALUES (%s, %s, 1)
                                     """, (type_id, unit_number.strip() if category_has_number else "N/A"))
-                                
-                                conn.commit()
-                                
+                                    
+                                    conn.commit()
+                                    
                                 if category_has_number:
                                     st.success(f"Successfully added {selected_type_name} (Unit: {unit_number}) to the Shop.")
                                 else:
@@ -443,7 +425,6 @@ elif st.session_state.current_page == "Remove Equipment":
     if conn:
         cur = conn.cursor()
         
-        # 1. Select equipment to remove
         cur.execute("""
             SELECT DISTINCT et.id, et.name 
             FROM equipment_types et 
@@ -485,7 +466,6 @@ elif st.session_state.current_page == "Remove Equipment":
             else:
                 st.info(f"All available {selected_type_name}s are already on your removal list.")
 
-        # 2. Confirm removal
         if st.session_state.remove_cart:
             st.divider()
             st.write("### Items Ready for Removal:")
@@ -500,7 +480,6 @@ elif st.session_state.current_page == "Remove Equipment":
                 if st.button("Confirm & Remove All", use_container_width=True):
                     try:
                         for item_id, label in st.session_state.remove_cart.items():
-                            # Get details for the log before deleting
                             cur.execute("""
                                 SELECT et.name, e.unit_number, l.name
                                 FROM equipment e 
@@ -511,10 +490,8 @@ elif st.session_state.current_page == "Remove Equipment":
                             t_name, u_num, loc_name = cur.fetchone()
                             item_desc = f"{t_name} ({u_num})" if u_num != "N/A" else t_name
                             
-                            # Delete from database
                             cur.execute("DELETE FROM equipment WHERE id = %s", (item_id,))
                             
-                            # Log the action
                             cur.execute("""
                                 INSERT INTO movement_logs (action_type, item_description, target_location) 
                                 VALUES (%s, %s, %s)
@@ -555,7 +532,6 @@ elif st.session_state.current_page == "Find Equipment":
             st.divider()
             
             if selected_type["has_number"]:
-                # Dropdown for numbered items
                 cur.execute("""
                     SELECT e.unit_number, l.name 
                     FROM equipment e
@@ -571,9 +547,7 @@ elif st.session_state.current_page == "Find Equipment":
                     st.write(f"### Location: **{unit_options[selected_unit]}**")
                 else:
                     st.info(f"No {selected_type_name}s found in the system.")
-                    
             else:
-                # Count and list locations for bulk items
                 cur.execute("""
                     SELECT l.name, COUNT(e.id) 
                     FROM equipment e
@@ -596,6 +570,49 @@ elif st.session_state.current_page == "Find Equipment":
         cur.close()
         conn.close()
 #############################
+elif st.session_state.current_page == "Extras":
+    st.subheader("Extras & System Tools")
+    st.write("Manage background data and clean up the database.")
+    
+    st.divider()
+    st.subheader("Cleanup Tools")
+    
+    if "confirm_delete_empty" not in st.session_state:
+        st.session_state.confirm_delete_empty = False
+
+    if st.button("🗑️ Delete All Empty Jobs"):
+        st.session_state.confirm_delete_empty = True
+
+    if st.session_state.confirm_delete_empty:
+        st.warning("Are you sure? This will permanently delete all job sites that currently have 0 equipment assigned to them (The Shop will not be touched).")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✔️ Yes, Delete Empty Jobs", use_container_width=True):
+                conn = connect_db()
+                if conn:
+                    cur = conn.cursor()
+                    try:
+                        cur.execute("""
+                            DELETE FROM locations 
+                            WHERE id != 1 
+                            AND id NOT IN (SELECT DISTINCT location_id FROM equipment);
+                        """)
+                        deleted_count = cur.rowcount
+                        conn.commit()
+                        st.success(f"Successfully cleaned up {deleted_count} empty job sites!")
+                        st.session_state.confirm_delete_empty = False
+                        st.rerun()
+                    except Exception as e:
+                        conn.rollback()
+                        st.error(f"Error deleting empty jobs: {e}")
+                    finally:
+                        cur.close()
+                        conn.close()
+        with col2:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.session_state.confirm_delete_empty = False
+                st.rerun()
 
 ###### Log View Section ########################
 elif st.session_state.current_page == "View Logs":
@@ -607,7 +624,6 @@ elif st.session_state.current_page == "View Logs":
         cur = conn.cursor()
         
         try:
-            # Fetch the latest 100 logs, sorting by ID descending to get the newest first
             cur.execute("""
                 SELECT action_type, item_description, target_location 
                 FROM movement_logs 
@@ -617,7 +633,6 @@ elif st.session_state.current_page == "View Logs":
             logs = cur.fetchall()
             
             if logs:
-                # Format the data into a clean dictionary list for Streamlit's table
                 log_data = []
                 for row in logs:
                     log_data.append({
@@ -626,7 +641,6 @@ elif st.session_state.current_page == "View Logs":
                         "Location / Note": row[2]
                     })
                 
-                # Display as an interactive table
                 st.dataframe(log_data, use_container_width=True)
             else:
                 st.info("No activity logs found. Start moving or removing equipment to see history here.")
