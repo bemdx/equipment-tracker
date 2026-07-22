@@ -304,10 +304,10 @@ elif st.session_state.current_page == "View Locations":
                         
                 for type_name, data in display_data.items():
                     if data["has_number"]:
-                        # Fixed numeric sorting order
-                        items_list = ", ".join(sorted(data["items"], key=lambda x: int(x) if x.isdigit() else x))
+                        # Robust sorting for numeric strings or text descriptions, without crashing
+                        items_list = ", ".join(sorted(data["items"], key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x))))
                         st.write(f"**{type_name}** (Total Count: {data['count']})")
-                        st.write(f"Assigned Units: {items_list}")
+                        st.write(items_list)
                     else:
                         st.write(f"**{type_name}** (Quantity: {data['count']})")
                     
@@ -364,7 +364,7 @@ elif st.session_state.current_page == "Add Equipment":
             
             with st.form("new_equipment_form", clear_on_submit=True):
                 if category_has_number:
-                    unit_number = st.text_input("Unit Number (Required)")
+                    unit_number = st.text_input("Unit Number or Identifier (Required)")
                     quantity = 1
                 else:
                     unit_number = "N/A"
@@ -374,14 +374,15 @@ elif st.session_state.current_page == "Add Equipment":
                 
                 if submit_eq:
                     if category_has_number and not unit_number.strip():
-                        st.error("A unit number is required for this category.")
+                        st.error("A unit number/identifier is required for this category.")
                     else:
                         duplicate_found = False
                         if category_has_number:
-                            cur.execute("SELECT id FROM equipment WHERE unit_number = %s", (unit_number.strip(),))
+                            # Check duplicate scoped strictly to this specific equipment category
+                            cur.execute("SELECT id FROM equipment WHERE type_id = %s AND unit_number = %s", (type_id, unit_number.strip()))
                             if cur.fetchone():
                                 duplicate_found = True
-                                st.error(f"Error: Unit number '{unit_number}' already exists in the system.")
+                                st.error(f"Error: Unit number/identifier '{unit_number}' already exists for this category.")
                         
                         if not duplicate_found:
                             try:
@@ -567,10 +568,14 @@ elif st.session_state.current_page == "Find Equipment":
         conn.close()
 #############################
 elif st.session_state.current_page == "Delete Empty Jobs":
-    st.subheader("Delete All Empty Jobs")
-    st.write("Permanently remove all job sites that currently have 0 equipment assigned.")
+    st.subheader("System Cleanup Tools")
+    st.write("Manage and clean up unused database entries.")
     
     st.divider()
+    
+    # --- TOOL 1: Delete Empty Job Sites ---
+    st.subheader("Delete All Empty Jobs")
+    st.write("Permanently remove all job sites that currently have 0 equipment assigned.")
     
     if "confirm_delete_empty" not in st.session_state:
         st.session_state.confirm_delete_empty = False
@@ -583,7 +588,7 @@ elif st.session_state.current_page == "Delete Empty Jobs":
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Yes, Delete Empty Jobs", use_container_width=True):
+            if st.button("Yes, Delete Empty Jobs", use_container_width=True, key="confirm_empty_jobs_btn"):
                 conn = connect_db()
                 if conn:
                     cur = conn.cursor()
@@ -605,9 +610,45 @@ elif st.session_state.current_page == "Delete Empty Jobs":
                         cur.close()
                         conn.close()
         with col2:
-            if st.button("Cancel", use_container_width=True):
+            if st.button("Cancel", use_container_width=True, key="cancel_empty_jobs_btn"):
                 st.session_state.confirm_delete_empty = False
                 st.rerun()
+
+    st.divider()
+
+    # --- TOOL 2: Delete Unused Categories ---
+    st.subheader("Delete Unused Equipment Categories")
+    st.write("Remove misspelled or empty categories that have no items assigned to them.")
+
+    conn = connect_db()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, name FROM equipment_types 
+            WHERE id NOT IN (SELECT DISTINCT type_id FROM equipment)
+            ORDER BY name;
+        """)
+        unused_types = cur.fetchall()
+
+        if unused_types:
+            type_options = {t[1]: t[0] for t in unused_types}
+            selected_unused_name = st.selectbox("Select Unused Category to Delete", list(type_options.keys()), key="delete_category_select")
+            selected_unused_id = type_options[selected_unused_name]
+
+            if st.button("🗑️ Permanently Delete Category", key="confirm_delete_category_btn"):
+                try:
+                    cur.execute("DELETE FROM equipment_types WHERE id = %s;", (selected_unused_id,))
+                    conn.commit()
+                    st.success(f"Successfully deleted category '{selected_unused_name}'!")
+                    st.rerun()
+                except Exception as e:
+                    conn.rollback()
+                    st.error(f"Error deleting category: {e}")
+        else:
+            st.info("No unused categories found (all categories currently have equipment assigned to them).")
+
+        cur.close()
+        conn.close()
 
 ###### Log View Section ########################
 elif st.session_state.current_page == "View Logs":
