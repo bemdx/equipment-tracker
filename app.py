@@ -143,7 +143,7 @@ elif st.session_state.current_page == "Move Equipment":
                             label = f"{u_num} (Currently at: {loc_name})"
                             item_options[label] = i_id
                             
-                        selected_item_label = st.selectbox("2. Select Specific Item", list(item_options.keys()))
+                        selected_item_label = st.selectbox("2. Select Specific Item", list(item_options.keys()), key="move_item_selectbox")
                         
                         # Add to list button
                         if st.button("➕ Add to List"):
