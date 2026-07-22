@@ -99,6 +99,7 @@ elif st.session_state.current_page == "Move Equipment":
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
+            # Step A: Fetch only Categories that actually have equipment in the system
             cur.execute("""
                 SELECT DISTINCT et.id, et.name 
                 FROM equipment_types et 
@@ -109,8 +110,49 @@ elif st.session_state.current_page == "Move Equipment":
             
             if avail_types:
                 type_options = {t[1]: t[0] for t in avail_types}
-                selected_type_name = st.selectbox("1. Select Equipment Type", list(type_options.keys()))
-                selected_type_id = type_options[selected_type_name]
+                
+                # --- ADDED: Quick mobile-friendly search filter ---
+                search_query = st.text_input("🔍 Type to Filter Categories", "").strip().lower()
+                filtered_options = {name: val for name, val in type_options.items() if search_query in name.lower()}
+                
+                if filtered_options:
+                    selected_type_name = st.selectbox("1. Select Equipment Type", list(filtered_options.keys()))
+                    selected_type_id = filtered_options[selected_type_name]
+                else:
+                    st.warning("No categories match your search.")
+                    selected_type_id = None
+
+                if selected_type_id:
+                    # Step B: Fetch only the Units for the selected Category
+                    cur.execute("""
+                        SELECT e.id, e.unit_number, l.name 
+                        FROM equipment e 
+                        JOIN locations l ON e.location_id = l.id 
+                        WHERE e.type_id = %s
+                        ORDER BY e.unit_number
+                    """, (selected_type_id,))
+                    items = cur.fetchall()
+                    
+                    # Filter out items that the user has already added to their staging list
+                    available_items = [i for i in items if i[0] not in st.session_state.move_cart]
+                    
+                    if available_items:
+                        item_options = {}
+                        for item in available_items:
+                            i_id, u_num, loc_name = item
+                            label = f"{u_num} (Currently at: {loc_name})"
+                            item_options[label] = i_id
+                            
+                        selected_item_label = st.selectbox("2. Select Specific Item", list(item_options.keys()))
+                        
+                        # Add to list button
+                        if st.button("➕ Add to List"):
+                            item_id = item_options[selected_item_label]
+                            full_label = f"{selected_type_name} — {selected_item_label}"
+                            st.session_state.move_cart[item_id] = full_label
+                            st.rerun()
+                    else:
+                        st.info(f"All available {selected_type_name}s are already on your move list.")
                 
                 cur.execute("""
                     SELECT e.id, e.unit_number, l.name 
@@ -627,5 +669,7 @@ elif st.session_state.current_page == "View Logs":
         except Exception as e:
             st.error(f"Error fetching logs: {e}")
             
+        cur.close()
+        conn.close()
         cur.close()
         conn.close()
