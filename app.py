@@ -290,7 +290,7 @@ elif st.session_state.current_page == "View Locations":
                         
                 for type_name, data in display_data.items():
                     if data["has_number"]:
-                        items_list = ", ".join(sorted(data["items"]))
+                        items_list = ", ".join(sorted(data["items"], key=lambda x: int(x) if x.isdigit() else x))
                         st.write(f"**{type_name}** (Total Count: {data['count']})")
                         st.write(f"Assigned Units: {items_list}")
                     else:
