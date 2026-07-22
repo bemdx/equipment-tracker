@@ -512,7 +512,7 @@ elif st.session_state.current_page == "Remove Equipment":
 
 elif st.session_state.current_page == "Find Equipment":
     st.subheader("Find Equipment")
-    st.write("Locate specific equipment or view distribution across all sites.")
+    st.write("Select an equipment type to see which job sites have it and what units are there.")
     
     conn = connect_db()
     if conn:
@@ -523,44 +523,42 @@ elif st.session_state.current_page == "Find Equipment":
         
         if types:
             type_options = {t[1]: {"id": t[0], "has_number": t[2]} for t in types}
-            selected_type_name = st.selectbox("Select Equipment Type", list(type_options.keys()))
+            selected_type_name = st.selectbox("Select Equipment Type to Find", list(type_options.keys()))
             selected_type = type_options[selected_type_name]
             
             st.divider()
             
-            if selected_type["has_number"]:
-                cur.execute("""
-                    SELECT e.unit_number, l.name 
-                    FROM equipment e
-                    JOIN locations l ON e.location_id = l.id
-                    WHERE e.type_id = %s
-                    ORDER BY e.unit_number
-                """, (selected_type["id"],))
-                units = cur.fetchall()
+            # Fetch all items of this type grouped/associated with locations
+            cur.execute("""
+                SELECT l.name, e.unit_number 
+                FROM equipment e
+                JOIN locations l ON e.location_id = l.id
+                WHERE e.type_id = %s
+                ORDER BY (l.id = 1) DESC, l.name ASC, e.unit_number ASC
+            """, (selected_type["id"],))
+            rows = cur.fetchall()
+            
+            if rows:
+                # Group by location name
+                loc_breakdown = {}
+                for loc_name, unit_num in rows:
+                    if loc_name not in loc_breakdown:
+                        loc_breakdown[loc_name] = []
+                    if selected_type["has_number"] and unit_num != "N/A":
+                        loc_breakdown[loc_name].append(unit_num)
+                        
+                st.write(f"### Distribution for: **{selected_type_name}**")
                 
-                if units:
-                    unit_options = {u[0]: u[1] for u in units}
-                    selected_unit = st.selectbox("Select Number", list(unit_options.keys()))
-                    st.write(f"### Location: **{unit_options[selected_unit]}**")
-                else:
-                    st.info(f"No {selected_type_name}s found in the system.")
+                for loc_name, units in loc_breakdown.items():
+                    st.write(f"**{loc_name}**")
+                    if selected_type["has_number"] and units:
+                        sorted_units = sorted(units, key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x)))
+                        st.write(f"Units: {', '.join(sorted_units)}")
+                    else:
+                        st.write(f"Quantity: {len(rows) if not selected_type['has_number'] else 'N/A'}")
+                    st.write("---")
             else:
-                cur.execute("""
-                    SELECT l.name, COUNT(e.id) 
-                    FROM equipment e
-                    JOIN locations l ON e.location_id = l.id
-                    WHERE e.type_id = %s
-                    GROUP BY l.name
-                    ORDER BY l.name
-                """, (selected_type["id"],))
-                counts = cur.fetchall()
-                
-                if counts:
-                    st.write(f"### {selected_type_name} Distribution:")
-                    for loc_name, count in counts:
-                        st.write(f"- **{loc_name}**: {count}")
-                else:
-                    st.info(f"No {selected_type_name}s found in the system.")
+                st.info(f"No units of {selected_type_name} found in the system.")
         else:
             st.info("No equipment types found.")
             
