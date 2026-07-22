@@ -553,7 +553,8 @@ elif st.session_state.current_page == "Find Equipment":
                     st.write(f"**{loc_name}**")
                     if selected_type["has_number"] and units:
                         sorted_units = sorted(units, key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x)))
-                        st.write(f"Units: {', '.join(sorted_units)}")
+                        label = "Unit" if len(sorted_units) == 1 else "Units"
+                        st.write(f"{label}: {', '.join(sorted_units)}")
                     else:
                         st.write(f"Quantity: {len(rows) if not selected_type['has_number'] else 'N/A'}")
                     st.write("---")
