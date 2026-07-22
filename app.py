@@ -46,8 +46,8 @@ with st.expander("Extras Menu"):
     if st.button("View Logs", use_container_width=True):
         st.session_state.current_page = "View Logs"
 
-    if st.button("Delete All Empty Jobs", use_container_width=True):
-        st.session_state.current_page = "Delete Empty Jobs"
+    if st.button("System Cleanup Tools", use_container_width=True):
+        st.session_state.current_page = "System Cleanup Tools"
 
 st.divider()
 
@@ -565,7 +565,7 @@ elif st.session_state.current_page == "Find Equipment":
         cur.close()
         conn.close()
 #############################
-elif st.session_state.current_page == "Delete Empty Jobs":
+elif st.session_state.current_page == "System Cleanup Tools":
     st.subheader("System Cleanup Tools")
     st.write("Manage and clean up unused database entries.")
     
