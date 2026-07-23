@@ -183,10 +183,17 @@ elif st.session_state.current_page == "Move Equipment":
                                     INSERT INTO movement_logs (action_type, item_description, target_location) 
                                     VALUES (%s, %s, %s)
                                 """, ("MOVED", item_desc, selected_loc_name))
+                            
+                            # AUTO-CLEANUP: Automatically delete any job sites left with 0 equipment (excluding Shop id=1)
+                            cur.execute("""
+                                DELETE FROM locations 
+                                WHERE id != 1 
+                                AND id NOT IN (SELECT DISTINCT location_id FROM equipment);
+                            """)
                                 
                             conn.commit()
                             st.session_state.move_cart.clear() 
-                            st.success("Successfully moved all equipment!")
+                            st.success("Successfully moved all equipment and cleaned up empty sites!")
                             st.rerun()
                         except Exception as e:
                             conn.rollback()
@@ -244,9 +251,16 @@ elif st.session_state.current_page == "Total Scrap-Out":
                             INSERT INTO movement_logs (action_type, item_description, target_location) 
                             VALUES (%s, %s, %s)
                         """, ("SCRAP-OUT", item_desc, f"Returned to Shop from {selected_job_name}"))
+                    
+                    # AUTO-CLEANUP: Automatically delete the scraped-out site since it now has 0 equipment
+                    cur.execute("""
+                        DELETE FROM locations 
+                        WHERE id != 1 
+                        AND id NOT IN (SELECT DISTINCT location_id FROM equipment);
+                    """)
                         
                     conn.commit()
-                    st.success(f"Successfully returned {len(items_to_move)} items from {selected_job_name} back to the Shop!")
+                    st.success(f"Successfully returned {len(items_to_move)} items from {selected_job_name} back to the Shop and cleaned up the empty site!")
                     st.rerun()
                     
                 except Exception as e:
@@ -493,10 +507,17 @@ elif st.session_state.current_page == "Remove Equipment":
                                 INSERT INTO movement_logs (action_type, item_description, target_location) 
                                 VALUES (%s, %s, %s)
                             """, ("REMOVED", item_desc, f"Removed from {loc_name}"))
+                        
+                        # AUTO-CLEANUP: Also clean up empty jobs if removing equipment leaves a site empty
+                        cur.execute("""
+                            DELETE FROM locations 
+                            WHERE id != 1 
+                            AND id NOT IN (SELECT DISTINCT location_id FROM equipment);
+                        """)
                             
                         conn.commit()
                         st.session_state.remove_cart.clear()
-                        st.success("Successfully removed selected equipment!")
+                        st.success("Successfully removed selected equipment and cleaned up any empty sites!")
                         st.rerun()
                     except Exception as e:
                         conn.rollback()
