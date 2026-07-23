@@ -99,11 +99,12 @@ elif st.session_state.current_page == "Move Equipment":
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
+            # Prioritize numbered equipment categories first, unnumbered categories at the bottom
             cur.execute("""
-                SELECT DISTINCT et.id, et.name 
+                SELECT DISTINCT et.id, et.name, et.has_number 
                 FROM equipment_types et 
                 JOIN equipment e ON et.id = e.type_id 
-                ORDER BY et.name
+                ORDER BY (et.has_number = true) DESC, et.name ASC
             """)
             avail_types = cur.fetchall()
             
@@ -290,12 +291,13 @@ elif st.session_state.current_page == "View Locations":
             
             st.divider()
             
+            # Prioritize numbered equipment categories first, unnumbered bulk categories at the bottom
             cur.execute("""
                 SELECT et.name, e.unit_number, et.has_number
                 FROM equipment e
                 JOIN equipment_types et ON e.type_id = et.id
                 WHERE e.location_id = %s
-                ORDER BY et.name, e.unit_number
+                ORDER BY (et.has_number = true) DESC, et.name ASC, e.unit_number ASC
             """, (selected_loc_id,))
             
             inventory = cur.fetchall()
