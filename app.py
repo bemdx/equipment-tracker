@@ -1,4 +1,5 @@
-import streamlit as st
+
+       import streamlit as st
 import psycopg2
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning-ajlql2xf.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
@@ -104,7 +105,7 @@ elif st.session_state.current_page == "Move Equipment":
                 SELECT DISTINCT et.id, et.name, et.has_number 
                 FROM equipment_types et 
                 JOIN equipment e ON et.id = e.type_id 
-                ORDER BY (et.has_number = true) DESC, et.name ASC
+                ORDER BY et.has_number DESC, et.name ASC
             """)
             avail_types = cur.fetchall()
             
@@ -297,7 +298,7 @@ elif st.session_state.current_page == "View Locations":
                 FROM equipment e
                 JOIN equipment_types et ON e.type_id = et.id
                 WHERE e.location_id = %s
-                ORDER BY (et.has_number = true) DESC, et.name ASC, e.unit_number ASC
+                ORDER BY et.has_number DESC, et.name ASC, e.unit_number ASC
             """, (selected_loc_id,))
             
             inventory = cur.fetchall()
