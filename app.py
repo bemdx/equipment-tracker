@@ -100,12 +100,12 @@ elif st.session_state.current_page == "Move Equipment":
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
-            # Prioritize numbered equipment categories first, unnumbered categories at the bottom
+            # Prioritize Pinned items first, then numbered, then unnumbered bulk items at the bottom
             cur.execute("""
-                SELECT DISTINCT et.id, et.name, et.has_number 
+                SELECT DISTINCT et.id, et.name, et.has_number, et.is_pinned 
                 FROM equipment_types et 
                 JOIN equipment e ON et.id = e.type_id 
-                ORDER BY et.has_number DESC, et.name ASC
+                ORDER BY et.is_pinned DESC, et.has_number DESC, et.name ASC
             """)
             avail_types = cur.fetchall()
             
@@ -292,13 +292,13 @@ elif st.session_state.current_page == "View Locations":
             
             st.divider()
             
-            # Prioritize numbered equipment categories first, unnumbered bulk categories at the bottom
+            # Prioritize Pinned first, then numbered, then unnumbered bulk categories at the bottom
             cur.execute("""
-                SELECT et.name, e.unit_number, et.has_number
+                SELECT et.name, e.unit_number, et.has_number, et.is_pinned
                 FROM equipment e
                 JOIN equipment_types et ON e.type_id = et.id
                 WHERE e.location_id = %s
-                ORDER BY et.has_number DESC, et.name ASC, e.unit_number ASC
+                ORDER BY et.is_pinned DESC, et.has_number DESC, et.name ASC, e.unit_number ASC
             """, (selected_loc_id,))
             
             inventory = cur.fetchall()
@@ -356,7 +356,7 @@ elif st.session_state.current_page == "Add Equipment":
             
             if submit_type and type_name:
                 try:
-                    cur.execute("INSERT INTO equipment_types (name, has_number) VALUES (%s, %s)", (type_name, has_number))
+                    cur.execute("INSERT INTO equipment_types (name, has_number, is_pinned) VALUES (%s, %s, FALSE)", (type_name, has_number))
                     conn.commit()
                     st.success(f"Category '{type_name}' created successfully.")
                 except Exception as e:
@@ -596,7 +596,56 @@ elif st.session_state.current_page == "System Cleanup Tools":
     
     st.divider()
     
-    # --- TOOL 1: Delete Empty Job Sites ---
+    # --- TOOL 1: Pin / Unpin Categories ---
+    st.subheader("Pin / Unpin Categories")
+    st.write("Pin common categories to the top of your lists and movement dropdowns, or unpin them.")
+    
+    conn = connect_db()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, is_pinned FROM equipment_types ORDER BY name ASC;")
+        all_categories = cur.fetchall()
+        
+        if all_categories:
+            cat_options = {f"{c[1]} {'📌 (Pinned)' if c[2] else ''}": (c[0], c[2]) for c in all_categories}
+            selected_cat_label = st.selectbox("Select Equipment Category to Modify", list(cat_options.keys()), key="pin_category_select")
+            cat_id, is_currently_pinned = cat_options[selected_cat_label]
+            
+            col_pin1, col_pin2 = st.columns(2)
+            with col_pin1:
+                if not is_currently_pinned:
+                    if st.button("📌 Pin Category", use_container_width=True, key="pin_btn"):
+                        try:
+                            cur.execute("UPDATE equipment_types SET is_pinned = TRUE WHERE id = %s;", (cat_id,))
+                            conn.commit()
+                            st.success("Category pinned successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            conn.rollback()
+                            st.error(f"Error: {e}")
+                else:
+                    st.info("This category is already pinned.")
+                    
+            with col_pin2:
+                if is_currently_pinned:
+                    if st.button("❌ Unpin Category", use_container_width=True, key="unpin_btn"):
+                        try:
+                            cur.execute("UPDATE equipment_types SET is_pinned = FALSE WHERE id = %s;", (cat_id,))
+                            conn.commit()
+                            st.success("Category unpinned successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            conn.rollback()
+                            st.error(f"Error: {e}")
+                else:
+                    st.info("This category is not pinned.")
+        else:
+            st.info("No equipment categories found.")
+        cur.close()
+
+    st.divider()
+
+    # --- TOOL 2: Delete Empty Job Sites ---
     st.subheader("Delete All Empty Jobs")
     st.write("Permanently remove all job sites that currently have 0 equipment assigned.")
     
@@ -639,7 +688,7 @@ elif st.session_state.current_page == "System Cleanup Tools":
 
     st.divider()
 
-    # --- TOOL 2: Delete Unused Categories ---
+    # --- TOOL 3: Delete Unused Categories ---
     st.subheader("Delete Unused Equipment Categories")
     st.write("Remove misspelled or empty categories that have no items assigned to them.")
 
@@ -708,4 +757,5 @@ elif st.session_state.current_page == "View Logs":
             st.error(f"Error fetching logs: {e}")
             
         cur.close()
+        conn.close()
         conn.close()
