@@ -1,4 +1,3 @@
-
 import streamlit as st
 import psycopg2
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning-ajlql2xf.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require"
@@ -367,7 +366,8 @@ elif st.session_state.current_page == "Add Equipment":
 
         st.write("Step 2: Add Item to Inventory")
         
-        cur.execute("SELECT id, name, has_number FROM equipment_types")
+        # Prioritize pinned categories first in the Add Equipment dropdown too
+        cur.execute("SELECT id, name, has_number FROM equipment_types ORDER BY is_pinned DESC, has_number DESC, name ASC")
         types = cur.fetchall()
         
         if types:
@@ -542,7 +542,8 @@ elif st.session_state.current_page == "Find Equipment":
     if conn:
         cur = conn.cursor()
         
-        cur.execute("SELECT id, name, has_number FROM equipment_types ORDER BY name")
+        # Prioritize pinned categories first in the Find Equipment dropdown too
+        cur.execute("SELECT id, name, has_number FROM equipment_types ORDER BY is_pinned DESC, has_number DESC, name ASC")
         types = cur.fetchall()
         
         if types:
@@ -758,4 +759,4 @@ elif st.session_state.current_page == "View Logs":
             
         cur.close()
         conn.close()
-        conn.close()
+
