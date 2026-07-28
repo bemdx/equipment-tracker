@@ -723,6 +723,44 @@ elif st.session_state.current_page == "System Cleanup Tools":
         cur.close()
         conn.close()
 
+    st.divider()
+
+    # --- TOOL 4: Clear Activity Logs ---
+    st.subheader("Clear Activity Logs")
+    st.write("Wipe out your past history and activity logs to keep things clean. (This will not touch your equipment or active locations).")
+
+    if "confirm_clear_logs" not in st.session_state:
+        st.session_state.confirm_clear_logs = False
+
+    if st.button("Clear All Activity Logs", key="init_clear_logs_btn"):
+        st.session_state.confirm_clear_logs = True
+
+    if st.session_state.confirm_clear_logs:
+        st.warning("Are you sure? This will permanently delete all activity log history. Your inventory and job sites will remain completely safe.")
+        
+        col_log1, col_log2 = st.columns(2)
+        with col_log1:
+            if st.button("Yes, Clear Logs", use_container_width=True, key="confirm_clear_logs_btn"):
+                conn = connect_db()
+                if conn:
+                    cur = conn.cursor()
+                    try:
+                        cur.execute("DELETE FROM movement_logs;")
+                        conn.commit()
+                        st.success("Successfully cleared all activity logs!")
+                        st.session_state.confirm_clear_logs = False
+                        st.rerun()
+                    except Exception as e:
+                        conn.rollback()
+                        st.error(f"Error clearing logs: {e}")
+                    finally:
+                        cur.close()
+                        conn.close()
+        with col_log2:
+            if st.button("Cancel", use_container_width=True, key="cancel_clear_logs_btn"):
+                st.session_state.confirm_clear_logs = False
+                st.rerun()
+
 ###### Log View Section ########################
 elif st.session_state.current_page == "View Logs":
     st.subheader("Activity Logs")
