@@ -104,7 +104,7 @@ elif st.session_state.current_page == "Move Equipment":
             st.markdown("🤖 **Smart AI Input:** Type what you're moving to add items automatically (e.g., *'grinder 3 and extension cord 1'*):")
             smart_text = st.text_input("Type items in plain English", key="smart_move_input")
             
-            if st.button("✨ Parse and Add via AI", key="parse_smart_input_btn"):
+            if st.button("Parse and Add via AI", key="parse_smart_input_btn"):
                 if smart_text.strip():
                     cur.execute("SELECT id, name, has_number FROM equipment_types")
                     all_types = {t[0]: {"name": t[1], "has_number": t[2]} for t in cur.fetchall()}
