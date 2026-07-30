@@ -1,4 +1,4 @@
-import streamlit as st
+   import streamlit as st
 import psycopg2
 
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning-ajlql2xf.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require"
@@ -69,7 +69,7 @@ elif st.session_state.current_page == "Move Equipment":
         cur = conn.cursor()
         
         # --- 1. ADD NEW JOB SITE EXPANDER ---
-        with st.expander("➕ Create New Job Site"):
+        with st.expander("Create New Job Site"):
             with st.form("new_job_form", clear_on_submit=True):
                 new_job_name = st.text_input("Enter New Job Site Name")
                 submit_job = st.form_submit_button("Create Job Site")
@@ -96,15 +96,14 @@ elif st.session_state.current_page == "Move Equipment":
 
         st.divider()
 
-        # --- 3. SMART AI INPUT BOX & ORIGINAL DROPDOWN WORKFLOW ---
+        # --- 3. AI INPUT & ORIGINAL DROPDOWN WORKFLOW ---
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
-            # AI Smart Input Box
-            st.markdown("🤖 **Smart AI Input:** Type what you're moving to add items automatically (e.g., *'grinder 3 and extension cord 1'*):")
-            smart_text = st.text_input("Type items in plain English", key="smart_move_input")
+            # AI Input Box
+            smart_text = st.text_input("AI Input (e.g., sander 7, vac 8)", key="smart_move_input")
             
-            if st.button("Parse and Add via AI", key="parse_smart_input_btn"):
+            if st.button("Parse and Add", key="parse_smart_input_btn"):
                 if smart_text.strip():
                     cur.execute("SELECT id, name, has_number FROM equipment_types")
                     all_types = {t[0]: {"name": t[1], "has_number": t[2]} for t in cur.fetchall()}
@@ -136,13 +135,13 @@ elif st.session_state.current_page == "Move Equipment":
                                     added_count += 1
                                     
                     if added_count > 0:
-                        st.success(f"Successfully added {added_count} item(s) to your move list via AI!")
+                        st.success(f"Successfully added {added_count} item(s) to your move list.")
                         st.rerun()
                     else:
-                        st.warning("Could not match equipment from text. Use the manual dropdowns below.")
+                        st.warning("Could not match equipment from text. Use manual selection below.")
 
             st.markdown("---")
-            st.write("Or use the original manual selection below:")
+            st.write("Manual Selection:")
 
             # Prioritize Pinned items first, then numbered, then unnumbered bulk items at the bottom
             cur.execute("""
@@ -157,7 +156,7 @@ elif st.session_state.current_page == "Move Equipment":
                 type_options = {t[1]: t[0] for t in avail_types}
                 
                 # Restored original dropdown search filter
-                search_query = st.text_input("🔍 Type to Filter Categories", "", key="move_category_search").strip().lower()
+                search_query = st.text_input("Type to Filter Categories", "", key="move_category_search").strip().lower()
                 filtered_options = {name: val for name, val in type_options.items() if search_query in name.lower()}
                 
                 if filtered_options:
@@ -191,7 +190,7 @@ elif st.session_state.current_page == "Move Equipment":
                         selected_item_label = st.selectbox("2. Select Specific Item", list(item_options.keys()), key="move_item_selectbox")
                         
                         # Add to list button with unique key
-                        if st.button("➕ Add to List", key="add_to_move_list_btn"):
+                        if st.button("Add to List", key="add_to_move_list_btn"):
                             item_id = item_options[selected_item_label]
                             full_label = f"{selected_type_name} — {selected_item_label}"
                             st.session_state.move_cart[item_id] = full_label
@@ -202,7 +201,7 @@ elif st.session_state.current_page == "Move Equipment":
             # --- 4. STAGING LIST & CONFIRMATION ---
             if st.session_state.move_cart:
                 st.divider()
-                st.write("### 📋 Items Ready to Move:")
+                st.write("### Items Ready to Move:")
                 
                 for idx, (i_id, label) in enumerate(st.session_state.move_cart.items()):
                     st.write(f"- {label}")
@@ -211,7 +210,7 @@ elif st.session_state.current_page == "Move Equipment":
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("🚚 Confirm & Move All", use_container_width=True):
+                    if st.button("Confirm & Move All", use_container_width=True):
                         try:
                             for item_id, label in st.session_state.move_cart.items():
                                 cur.execute("""
@@ -246,7 +245,7 @@ elif st.session_state.current_page == "Move Equipment":
                             st.error(f"Error moving equipment: {e}")
                             
                 with col2:
-                    if st.button("❌ Clear List", use_container_width=True):
+                    if st.button("Clear List", use_container_width=True):
                         st.session_state.move_cart.clear()
                         st.rerun()
                         
@@ -653,14 +652,14 @@ elif st.session_state.current_page == "System Cleanup Tools":
         all_categories = cur.fetchall()
         
         if all_categories:
-            cat_options = {f"{c[1]} {'📌 (Pinned)' if c[2] else ''}": (c[0], c[2]) for c in all_categories}
+            cat_options = {f"{c[1]} {'(Pinned)' if c[2] else ''}": (c[0], c[2]) for c in all_categories}
             selected_cat_label = st.selectbox("Select Equipment Category to Modify", list(cat_options.keys()), key="pin_category_select")
             cat_id, is_currently_pinned = cat_options[selected_cat_label]
             
             col_pin1, col_pin2 = st.columns(2)
             with col_pin1:
                 if not is_currently_pinned:
-                    if st.button("📌 Pin Category", use_container_width=True, key="pin_btn"):
+                    if st.button("Pin Category", use_container_width=True, key="pin_btn"):
                         try:
                             cur.execute("UPDATE equipment_types SET is_pinned = TRUE WHERE id = %s;", (cat_id,))
                             conn.commit()
@@ -674,7 +673,7 @@ elif st.session_state.current_page == "System Cleanup Tools":
                     
             with col_pin2:
                 if is_currently_pinned:
-                    if st.button("❌ Unpin Category", use_container_width=True, key="unpin_btn"):
+                    if st.button("Unpin Category", use_container_width=True, key="unpin_btn"):
                         try:
                             cur.execute("UPDATE equipment_types SET is_pinned = FALSE WHERE id = %s;", (cat_id,))
                             conn.commit()
@@ -753,7 +752,7 @@ elif st.session_state.current_page == "System Cleanup Tools":
             selected_unused_name = st.selectbox("Select Unused Category to Delete", list(type_options.keys()), key="delete_category_select")
             selected_unused_id = type_options[selected_unused_name]
 
-            if st.button("🗑️ Permanently Delete Category", key="confirm_delete_category_btn"):
+            if st.button("Permanently Delete Category", key="confirm_delete_category_btn"):
                 try:
                     cur.execute("DELETE FROM equipment_types WHERE id = %s;", (selected_unused_id,))
                     conn.commit()
