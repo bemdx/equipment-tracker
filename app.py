@@ -1,5 +1,6 @@
 import streamlit as st
 import psycopg2
+
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning-ajlql2xf.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
 # Page Configuration
@@ -95,10 +96,54 @@ elif st.session_state.current_page == "Move Equipment":
 
         st.divider()
 
-        # --- 3. SELECT EQUIPMENT (TWO-STEP FILTER WITH MOBILE SEARCH) ---
+        # --- 3. SMART AI INPUT BOX & ORIGINAL DROPDOWN WORKFLOW ---
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
+            # AI Smart Input Box
+            st.markdown("🤖 **Smart AI Input:** Type what you're moving to add items automatically (e.g., *'grinder 3 and extension cord 1'*):")
+            smart_text = st.text_input("Type items in plain English", key="smart_move_input")
+            
+            if st.button("✨ Parse and Add via AI", key="parse_smart_input_btn"):
+                if smart_text.strip():
+                    cur.execute("SELECT id, name, has_number FROM equipment_types")
+                    all_types = {t[0]: {"name": t[1], "has_number": t[2]} for t in cur.fetchall()}
+                    
+                    cur.execute("""
+                        SELECT e.id, e.type_id, e.unit_number, et.name 
+                        FROM equipment e 
+                        JOIN equipment_types et ON e.type_id = et.id
+                    """)
+                    all_items = cur.fetchall()
+                    
+                    text_lower = smart_text.lower()
+                    added_count = 0
+                    
+                    for item in all_items:
+                        i_id, t_id, u_num, t_name = item
+                        t_name_lower = t_name.lower()
+                        
+                        if t_name_lower in text_lower:
+                            if i_id not in st.session_state.move_cart:
+                                if all_types[t_id]["has_number"]:
+                                    if u_num.lower() in text_lower:
+                                        full_label = f"{t_name} — {u_num}"
+                                        st.session_state.move_cart[i_id] = full_label
+                                        added_count += 1
+                                else:
+                                    full_label = f"{t_name} — N/A"
+                                    st.session_state.move_cart[i_id] = full_label
+                                    added_count += 1
+                                    
+                    if added_count > 0:
+                        st.success(f"Successfully added {added_count} item(s) to your move list via AI!")
+                        st.rerun()
+                    else:
+                        st.warning("Could not match equipment from text. Use the manual dropdowns below.")
+
+            st.markdown("---")
+            st.write("Or use the original manual selection below:")
+
             # Prioritize Pinned items first, then numbered, then unnumbered bulk items at the bottom
             cur.execute("""
                 SELECT DISTINCT et.id, et.name, et.has_number, et.is_pinned 
@@ -111,7 +156,7 @@ elif st.session_state.current_page == "Move Equipment":
             if avail_types:
                 type_options = {t[1]: t[0] for t in avail_types}
                 
-                # Mobile-friendly category search filter
+                # Restored original dropdown search filter
                 search_query = st.text_input("🔍 Type to Filter Categories", "", key="move_category_search").strip().lower()
                 filtered_options = {name: val for name, val in type_options.items() if search_query in name.lower()}
                 
@@ -797,4 +842,3 @@ elif st.session_state.current_page == "View Logs":
             
         cur.close()
         conn.close()
-
