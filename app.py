@@ -1,11 +1,7 @@
 import streamlit as st
 import psycopg2
-from google import genai
 
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning-ajlql2xf.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require"
-
-# Initialize the Gemini client using your free API key
-client = genai.Client(api_key="YOUR_GEMINI_API_KEY")
 
 # Page Configuration
 st.set_page_config(page_title="Equipment Tracker", layout="centered")
@@ -100,69 +96,10 @@ elif st.session_state.current_page == "Move Equipment":
 
         st.divider()
 
-        # --- 3. AI INPUT & ORIGINAL DROPDOWN WORKFLOW ---
+        # --- 3. SELECT EQUIPMENT (TWO-STEP FILTER WITH SEARCH) ---
         if target_location_id:
             st.write(f"### Moving gear to: **{selected_loc_name}**")
             
-            # AI Input Box
-            smart_text = st.text_input("AI Input (e.g., sander 7, vac 8)", key="smart_move_input")
-            
-            if st.button("Parse and Add", key="parse_smart_input_btn"):
-                if smart_text.strip():
-                    try:
-                        cur.execute("""
-                            SELECT e.id, et.name, e.unit_number 
-                            FROM equipment e 
-                            JOIN equipment_types et ON e.type_id = et.id
-                        """)
-                        available_db_items = cur.fetchall()
-                        
-                        inventory_context = "\n".join([f"ID: {row[0]}, Category: {row[1]}, Unit: {row[2]}" for row in available_db_items])
-                        
-                        prompt = f"""
-                        You are an inventory assistant. Match the user's input text to the available inventory list below.
-                        User Input: "{smart_text}"
-                        
-                        Available Inventory:
-                        {inventory_context}
-                        
-                        Return ONLY a comma-separated list of the Database IDs for the matching items. Do not include any other text or explanation.
-                        """
-                        
-                        response = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=prompt,
-                        )
-                        
-                        matched_ids = [int(i.strip()) for i in response.text.split(",") if i.strip().isdigit()]
-                        
-                        added_count = 0
-                        for item_id in matched_ids:
-                            if item_id not in st.session_state.move_cart:
-                                cur.execute("""
-                                    SELECT et.name, e.unit_number 
-                                    FROM equipment e 
-                                    JOIN equipment_types et ON e.type_id = et.id 
-                                    WHERE e.id = %s
-                                """, (item_id,))
-                                res = cur.fetchone()
-                                if res:
-                                    t_name, u_num = res
-                                    full_label = f"{t_name} — {u_num}" if u_num != "N/A" else f"{t_name} — N/A"
-                                    st.session_state.move_cart[item_id] = full_label
-                                    added_count += 1
-                                    
-                        if added_count > 0:
-                            st.success(f"Successfully added {added_count} item(s) via AI.")
-                            st.rerun()
-                        else:
-                            st.warning("Could not match equipment from text. Use manual selection below.")
-                    except Exception as e:
-                        st.error(f"AI parsing error: {e}")
-
-            st.markdown("---")
-            st.write("Manual Selection:")
-
             # Prioritize Pinned items first, then numbered, then unnumbered bulk items at the bottom
             cur.execute("""
                 SELECT DISTINCT et.id, et.name, et.has_number, et.is_pinned 
@@ -175,7 +112,7 @@ elif st.session_state.current_page == "Move Equipment":
             if avail_types:
                 type_options = {t[1]: t[0] for t in avail_types}
                 
-                # Restored original dropdown search filter
+                # Category search filter
                 search_query = st.text_input("Type to Filter Categories", "", key="move_category_search").strip().lower()
                 filtered_options = {name: val for name, val in type_options.items() if search_query in name.lower()}
                 
