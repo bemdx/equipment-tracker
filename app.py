@@ -1,7 +1,11 @@
 import streamlit as st
 import psycopg2
+from google import genai
 
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_DRJ5nF0OTNiy@ep-rapid-morning-ajlql2xf.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+# Initialize the Gemini client using your free API key
+client = genai.Client(api_key="YOUR_GEMINI_API_KEY")
 
 # Page Configuration
 st.set_page_config(page_title="Equipment Tracker", layout="centered")
@@ -105,40 +109,56 @@ elif st.session_state.current_page == "Move Equipment":
             
             if st.button("Parse and Add", key="parse_smart_input_btn"):
                 if smart_text.strip():
-                    cur.execute("SELECT id, name, has_number FROM equipment_types")
-                    all_types = {t[0]: {"name": t[1], "has_number": t[2]} for t in cur.fetchall()}
-                    
-                    cur.execute("""
-                        SELECT e.id, e.type_id, e.unit_number, et.name 
-                        FROM equipment e 
-                        JOIN equipment_types et ON e.type_id = et.id
-                    """)
-                    all_items = cur.fetchall()
-                    
-                    text_lower = smart_text.lower()
-                    added_count = 0
-                    
-                    for item in all_items:
-                        i_id, t_id, u_num, t_name = item
-                        t_name_lower = t_name.lower()
+                    try:
+                        cur.execute("""
+                            SELECT e.id, et.name, e.unit_number 
+                            FROM equipment e 
+                            JOIN equipment_types et ON e.type_id = et.id
+                        """)
+                        available_db_items = cur.fetchall()
                         
-                        if t_name_lower in text_lower:
-                            if i_id not in st.session_state.move_cart:
-                                if all_types[t_id]["has_number"]:
-                                    if u_num.lower() in text_lower:
-                                        full_label = f"{t_name} — {u_num}"
-                                        st.session_state.move_cart[i_id] = full_label
-                                        added_count += 1
-                                else:
-                                    full_label = f"{t_name} — N/A"
-                                    st.session_state.move_cart[i_id] = full_label
+                        inventory_context = "\n".join([f"ID: {row[0]}, Category: {row[1]}, Unit: {row[2]}" for row in available_db_items])
+                        
+                        prompt = f"""
+                        You are an inventory assistant. Match the user's input text to the available inventory list below.
+                        User Input: "{smart_text}"
+                        
+                        Available Inventory:
+                        {inventory_context}
+                        
+                        Return ONLY a comma-separated list of the Database IDs for the matching items. Do not include any other text or explanation.
+                        """
+                        
+                        response = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=prompt,
+                        )
+                        
+                        matched_ids = [int(i.strip()) for i in response.text.split(",") if i.strip().isdigit()]
+                        
+                        added_count = 0
+                        for item_id in matched_ids:
+                            if item_id not in st.session_state.move_cart:
+                                cur.execute("""
+                                    SELECT et.name, e.unit_number 
+                                    FROM equipment e 
+                                    JOIN equipment_types et ON e.type_id = et.id 
+                                    WHERE e.id = %s
+                                """, (item_id,))
+                                res = cur.fetchone()
+                                if res:
+                                    t_name, u_num = res
+                                    full_label = f"{t_name} — {u_num}" if u_num != "N/A" else f"{t_name} — N/A"
+                                    st.session_state.move_cart[item_id] = full_label
                                     added_count += 1
                                     
-                    if added_count > 0:
-                        st.success(f"Successfully added {added_count} item(s) to your move list.")
-                        st.rerun()
-                    else:
-                        st.warning("Could not match equipment from text. Use manual selection below.")
+                        if added_count > 0:
+                            st.success(f"Successfully added {added_count} item(s) via AI.")
+                            st.rerun()
+                        else:
+                            st.warning("Could not match equipment from text. Use manual selection below.")
+                    except Exception as e:
+                        st.error(f"AI parsing error: {e}")
 
             st.markdown("---")
             st.write("Manual Selection:")
